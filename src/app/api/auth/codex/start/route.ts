@@ -18,6 +18,18 @@ import { ensureCodexLoopbackServer } from "@/lib/codex-loopback-server";
 
 export const runtime = "nodejs";
 
+function usesLoopbackRedirect(redirectUri: string) {
+  try {
+    const url = new URL(redirectUri);
+    return (
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+      url.port === "1455"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   cleanupCodexAuthStores();
 
@@ -29,12 +41,14 @@ export async function GET(request: NextRequest) {
   const codeVerifier = randomUrlToken();
   const codeChallenge = createCodeChallenge(codeVerifier);
 
-  try {
-    await ensureCodexLoopbackServer();
-  } catch {
-    const errorUrl = new URL("/signin", request.url);
-    errorUrl.searchParams.set("error", "callback_listener_unavailable");
-    return NextResponse.redirect(errorUrl);
+  if (usesLoopbackRedirect(redirectUri)) {
+    try {
+      await ensureCodexLoopbackServer();
+    } catch {
+      const errorUrl = new URL("/signin", request.url);
+      errorUrl.searchParams.set("error", "callback_listener_unavailable");
+      return NextResponse.redirect(errorUrl);
+    }
   }
 
   pendingCodexOAuth.set(state, {

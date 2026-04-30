@@ -48,7 +48,7 @@ CODEX_RESPONSES_MODEL=gpt-5.4-mini
 CLEARWEIGHT_CODEX_SESSION_STORE=.clearweight/codex-sessions.json
 ```
 
-`CODEX_OAUTH_REDIRECT_URI` is optional locally. By default the app uses the same loopback callback shape as Codex, OpenClaw, and Steward: `http://localhost:1455/auth/callback`.
+`CODEX_OAUTH_REDIRECT_URI` is optional locally. By default the app uses the same loopback callback shape as Codex, OpenClaw, and Steward: `http://localhost:1455/auth/callback`. For a hosted deployment, set it to the hosted callback route, for example `https://your-domain.example/api/auth/codex/callback`.
 
 ## Codex sign-in
 
@@ -70,7 +70,7 @@ Current limits:
 - Matrix generation uses the browser's signed-in Clearweight Codex session only.
 - If the browser has no valid `clearweight_codex_session` cookie, generation returns `401`.
 - Sign-out deletes the server-side session and clears the browser cookie.
-- The Codex public OAuth client is a native loopback client. This local callback flow is for local app use; a hosted public app needs a different production auth strategy. Boring, but cheaper than pretending OAuth is fairy dust.
+- The Codex public OAuth client must accept the redirect URI you deploy with. Local development uses the loopback callback; hosted deployment uses `/api/auth/codex/callback`.
 
 ## Scripts
 
