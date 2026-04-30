@@ -116,6 +116,53 @@ export function codexRedirectUri() {
   return configuredEnv("CODEX_OAUTH_REDIRECT_URI") ?? DEFAULT_CODEX_REDIRECT_URI;
 }
 
+export type CodexOAuthConfigurationProblem =
+  | "hosted_default_client_unsupported"
+  | "hosted_loopback_unsupported";
+
+export function isLoopbackUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      url.protocol === "http:" &&
+      (host === "localhost" || host === "127.0.0.1" || host === "::1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function codexOAuthConfigurationProblem(appOrigin: string) {
+  const redirectUri = codexRedirectUri();
+  const hasDefaultPublicClient = codexClientId() === DEFAULT_CODEX_CLIENT_ID;
+  const appIsLoopback = isLoopbackUrl(appOrigin);
+  const redirectIsLoopback = isLoopbackUrl(redirectUri);
+
+  if (redirectIsLoopback && !appIsLoopback) {
+    return "hosted_loopback_unsupported" satisfies CodexOAuthConfigurationProblem;
+  }
+
+  if (!redirectIsLoopback && hasDefaultPublicClient) {
+    return "hosted_default_client_unsupported" satisfies CodexOAuthConfigurationProblem;
+  }
+
+  return null;
+}
+
+export function codexOAuthProblemMessage(
+  problem: CodexOAuthConfigurationProblem | null,
+) {
+  switch (problem) {
+    case "hosted_default_client_unsupported":
+      return "This deployment is using the public Codex desktop OAuth client with a hosted callback. OpenAI rejects that redirect. Configure a Codex OAuth client that is allowed to redirect to this domain.";
+    case "hosted_loopback_unsupported":
+      return "This deployment is configured for the local Codex loopback callback. That only works when Clearweight is running on the same machine as the browser.";
+    default:
+      return null;
+  }
+}
+
 export function randomUrlToken(bytes = 32) {
   return randomBytes(bytes).toString("base64url");
 }

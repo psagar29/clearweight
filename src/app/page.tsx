@@ -31,6 +31,11 @@ type AuthStatus = {
     planType: string | null;
   };
   expiresAt?: string;
+  configuration?: {
+    signInAvailable: boolean;
+    problem: string | null;
+    message: string | null;
+  };
 };
 
 /* ── monochrome option palette ── */
@@ -76,6 +81,8 @@ export default function Home() {
   const signedInName = auth?.signedIn
     ? (auth.profile?.name ?? auth.profile?.email ?? auth.profile?.accountId ?? "Connected")
     : null;
+  const signInAvailable = auth?.configuration?.signInAvailable ?? true;
+  const signInProblemMessage = auth?.configuration?.message ?? null;
 
   const ranked = useMemo(() => (matrix ? rankOptions(matrix) : []), [matrix]);
   const leader = ranked[0] ?? null;
@@ -123,7 +130,7 @@ export default function Home() {
     if (trimmed.length < 8) { setError("Describe your decision in at least a sentence."); return; }
     if (!auth?.signedIn) {
       setNeedsAuth(true);
-      setError("Sign in with your Codex account before generating a matrix.");
+      setError(signInProblemMessage ?? "Sign in with your Codex account before generating a matrix.");
       setPhase("input");
       return;
     }
@@ -162,7 +169,7 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [auth?.signedIn, prompt]);
+  }, [auth?.signedIn, prompt, signInProblemMessage]);
 
   function updateWeight(id: string, w: number) {
     setMatrix((cur) => cur ? { ...cur, criteria: cur.criteria.map((c) => c.id === id ? { ...c, weight: clampWeight(w) } : c) } : cur);
@@ -196,6 +203,8 @@ export default function Home() {
         light={light}
         loading
         message="Checking this browser's Codex session..."
+        signInAvailable={signInAvailable}
+        signInProblemMessage={signInProblemMessage}
         onToggleTheme={() => setLight((v) => !v)}
       />
     );
@@ -206,6 +215,8 @@ export default function Home() {
       <AuthGate
         light={light}
         message={needsAuth || error ? error ?? "Sign in with Codex to continue." : "Sign in with your Codex account to use Clearweight."}
+        signInAvailable={signInAvailable}
+        signInProblemMessage={signInProblemMessage}
         onToggleTheme={() => setLight((v) => !v)}
       />
     );
@@ -306,16 +317,28 @@ export default function Home() {
                       Sign in to generate
                     </p>
                     <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
-                      Connect your Codex account to power AI matrix generation.
+                      {signInProblemMessage ?? "Connect your Codex account to power AI matrix generation."}
                     </p>
-                    <a
-                      href="/api/auth/codex/start?returnTo=/"
-                      className="mt-3 inline-flex h-8 items-center gap-2 rounded-[10px] px-4 text-[12px] font-semibold transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
-                      style={{ background: "var(--accent)", color: "var(--bg)" }}
-                    >
-                      <KeyRound size={12} />
-                      Continue with Codex
-                    </a>
+                    {signInAvailable ? (
+                      <a
+                        href="/api/auth/codex/start?returnTo=/"
+                        className="mt-3 inline-flex h-8 items-center gap-2 rounded-[10px] px-4 text-[12px] font-semibold transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                        style={{ background: "var(--accent)", color: "var(--bg)" }}
+                      >
+                        <KeyRound size={12} />
+                        Continue with Codex
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="mt-3 inline-flex h-8 cursor-not-allowed items-center gap-2 rounded-[10px] px-4 text-[12px] font-semibold opacity-60"
+                        style={{ background: "var(--surface-hover)", color: "var(--muted)" }}
+                      >
+                        <KeyRound size={12} />
+                        Codex sign-in unavailable
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -326,7 +349,13 @@ export default function Home() {
           {!authLoading && !auth?.signedIn && !needsAuth && phase === "input" && (
             <div className="mt-4 flex items-center justify-center gap-2 anim-fade">
               <span className="text-[11px]" style={{ color: "var(--faint)" }}>
-                <a href="/signin" className="underline underline-offset-2 transition-colors hover:text-[var(--muted)]">Sign in with Codex</a> to generate matrices
+                {signInAvailable ? (
+                  <>
+                    <a href="/signin" className="underline underline-offset-2 transition-colors hover:text-[var(--muted)]">Sign in with Codex</a> to generate matrices
+                  </>
+                ) : (
+                  "Codex sign-in is not available on this deployment"
+                )}
               </span>
             </div>
           )}
@@ -597,11 +626,15 @@ function AuthGate({
   light,
   loading = false,
   message,
+  signInAvailable,
+  signInProblemMessage,
   onToggleTheme,
 }: {
   light: boolean;
   loading?: boolean;
   message: string;
+  signInAvailable: boolean;
+  signInProblemMessage: string | null;
   onToggleTheme: () => void;
 }) {
   return (
@@ -655,16 +688,28 @@ function AuthGate({
             ) : (
               <>
                 <p className="mb-5 text-center text-[14px] leading-relaxed" style={{ color: "var(--muted)" }}>
-                  {message}
+                  {signInProblemMessage ?? message}
                 </p>
-                <a
-                  href="/api/auth/codex/start?returnTo=/"
-                  className="flex h-12 w-full items-center justify-center gap-2.5 rounded-[14px] text-[14px] font-semibold transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
-                  style={{ background: "var(--accent)", color: "var(--bg)", boxShadow: "var(--shadow-sm)" }}
-                >
-                  <KeyRound size={16} />
-                  Continue with Codex
-                </a>
+                {signInAvailable ? (
+                  <a
+                    href="/api/auth/codex/start?returnTo=/"
+                    className="flex h-12 w-full items-center justify-center gap-2.5 rounded-[14px] text-[14px] font-semibold transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                    style={{ background: "var(--accent)", color: "var(--bg)", boxShadow: "var(--shadow-sm)" }}
+                  >
+                    <KeyRound size={16} />
+                    Continue with Codex
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-[14px] text-[14px] font-semibold opacity-60"
+                    style={{ background: "var(--surface-hover)", color: "var(--muted)" }}
+                  >
+                    <KeyRound size={16} />
+                    Codex sign-in unavailable
+                  </button>
+                )}
               </>
             )}
           </div>

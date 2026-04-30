@@ -59,7 +59,7 @@ You describe a decision
 | **Hard gates** | Mark criteria as mandatory pass/fail constraints |
 | **Sensitivity analysis** | Flags when the winner is fragile |
 | **Dark & light modes** | Premium glassmorphism UI with smooth transitions |
-| **No API key required** | Uses Codex OAuth sign-in, not a billable platform key |
+| **No API key required** | Local development uses Codex OAuth sign-in, not a billable platform key |
 | **Fully open source** | MIT licensed, deploy anywhere |
 
 ---
@@ -70,7 +70,7 @@ You describe a decision
 - **React 19** with TypeScript
 - **Tailwind CSS v4** with glassmorphism design system
 - **Zod** schema validation
-- **Codex OAuth PKCE** authentication
+- **Codex OAuth PKCE** authentication for local development
 
 ---
 
@@ -114,6 +114,14 @@ Clearweight uses the same Codex OAuth PKCE flow as OpenClaw and Steward:
 
 No platform API key. No local scaffold fallback. Your Codex session is the key.
 
+Important hosted-auth constraint: the default Codex client ID
+`app_EMoamEEZ73f0CkXaXp7hrann` is the public desktop/CLI client and is only
+usable with the local loopback callback (`http://localhost:1455/auth/callback`).
+It is not allowed to redirect to `https://clearweight.vercel.app/...`; OpenAI
+returns a generic `unknown_error` for that invalid combination. A hosted release
+needs a Codex/OpenAI OAuth client that is explicitly allowed to redirect to the
+hosted domain.
+
 ---
 
 ## Scripts
@@ -130,7 +138,10 @@ npm run check        # lint + typecheck
 
 ## Deploy
 
-Deploy as a standard Next.js app on Vercel, Railway, or any Node host. Set `CLEARWEIGHT_COOKIE_SECRET` and update `CODEX_OAUTH_REDIRECT_URI` to your hosted callback URL.
+Deploy as a standard Next.js app on Vercel, Railway, or any Node host. Set
+`CLEARWEIGHT_COOKIE_SECRET`. For hosted Codex sign-in, also set a
+`CODEX_OAUTH_CLIENT_ID` whose allowed redirect URI includes your hosted callback,
+then set `CODEX_OAUTH_REDIRECT_URI` to that callback URL.
 
 The live deployment is at **[clearweight.vercel.app](https://clearweight.vercel.app)**.
 

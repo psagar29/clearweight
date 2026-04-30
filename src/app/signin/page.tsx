@@ -1,5 +1,11 @@
 import { ArrowLeft, CheckCircle2, KeyRound, Shield, Zap } from "lucide-react";
 import Link from "next/link";
+import { headers } from "next/headers";
+
+import {
+  codexOAuthConfigurationProblem,
+  codexOAuthProblemMessage,
+} from "@/lib/codex-oauth";
 
 import { SignInStatus } from "./sign-in-status";
 
@@ -11,6 +17,10 @@ const errorMessages: Record<string, string> = {
   codex_denied: "Sign-in was cancelled. Try again when ready.",
   callback_listener_unavailable:
     "Could not start the local callback listener. Make sure port 1455 is free.",
+  hosted_default_client_unsupported:
+    "This hosted callback is not allowed for the public Codex desktop OAuth client.",
+  hosted_loopback_unsupported:
+    "This deployment is configured for a local callback, which cannot complete from Vercel.",
   signin_expired: "Sign-in session expired. Please try again.",
   state_mismatch: "Security state mismatch. Please restart sign-in.",
   token_exchange_failed: "Token exchange failed. Try again in a moment.",
@@ -26,10 +36,20 @@ const steps = [
   { icon: Zap, label: "Generate", desc: "Start creating AI-powered decision matrices" },
 ];
 
+async function requestOrigin() {
+  const headerList = await headers();
+  const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
+  const proto = headerList.get("x-forwarded-proto") ?? "http";
+  return host ? `${proto}://${host}` : "";
+}
+
 export default async function SignInPage({ searchParams }: SignInPageProps) {
   const params = await searchParams;
   const error = firstValue(params.error);
   const connected = firstValue(params.connected);
+  const configurationProblem = codexOAuthConfigurationProblem(await requestOrigin());
+  const configurationMessage = codexOAuthProblemMessage(configurationProblem);
+  const signInAvailable = !configurationProblem;
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center px-5 py-16">
@@ -86,15 +106,36 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
             </div>
           )}
 
+          {configurationMessage && (
+            <div
+              className="mt-5 rounded-[12px] px-4 py-3 text-[12px] leading-relaxed anim-fade"
+              style={{ background: "rgba(250, 204, 21, 0.06)", border: "1px solid rgba(250, 204, 21, 0.14)", color: "rgb(253, 224, 71)" }}
+            >
+              {configurationMessage}
+            </div>
+          )}
+
           {/* CTA button */}
-          <a
-            href="/api/auth/codex/start?returnTo=/"
-            className="mt-6 flex h-11 w-full items-center justify-center gap-2.5 rounded-[12px] text-[13px] font-semibold transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
-            style={{ background: "var(--accent)", color: "var(--bg)", boxShadow: "var(--shadow-sm)" }}
-          >
-            <KeyRound size={15} />
-            Continue with Codex
-          </a>
+          {signInAvailable ? (
+            <a
+              href="/api/auth/codex/start?returnTo=/"
+              className="mt-6 flex h-11 w-full items-center justify-center gap-2.5 rounded-[12px] text-[13px] font-semibold transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+              style={{ background: "var(--accent)", color: "var(--bg)", boxShadow: "var(--shadow-sm)" }}
+            >
+              <KeyRound size={15} />
+              Continue with Codex
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="mt-6 flex h-11 w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-[12px] text-[13px] font-semibold opacity-60"
+              style={{ background: "var(--surface-hover)", color: "var(--muted)" }}
+            >
+              <KeyRound size={15} />
+              Codex sign-in unavailable
+            </button>
+          )}
 
           {/* divider */}
           <div className="my-6 flex items-center gap-3">

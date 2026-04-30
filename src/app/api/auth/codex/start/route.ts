@@ -5,6 +5,7 @@ import {
   cleanupCodexAuthStores,
   codexAuthorizeEndpoint,
   codexClientId,
+  codexOAuthConfigurationProblem,
   codexOriginator,
   codexPendingCookieHeader,
   codexRedirectUri,
@@ -14,21 +15,14 @@ import {
   pendingCodexOAuth,
   randomUrlToken,
   secureCookie,
+  isLoopbackUrl,
 } from "@/lib/codex-oauth";
 import { ensureCodexLoopbackServer } from "@/lib/codex-loopback-server";
 
 export const runtime = "nodejs";
 
 function usesLoopbackRedirect(redirectUri: string) {
-  try {
-    const url = new URL(redirectUri);
-    return (
-      (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
-      url.port === "1455"
-    );
-  } catch {
-    return false;
-  }
+  return isLoopbackUrl(redirectUri);
 }
 
 export async function GET(request: NextRequest) {
@@ -38,6 +32,14 @@ export async function GET(request: NextRequest) {
   const origin = requestUrl.origin;
   const returnTo = getReturnTo(requestUrl.searchParams.get("returnTo"));
   const redirectUri = codexRedirectUri();
+  const configurationProblem = codexOAuthConfigurationProblem(origin);
+
+  if (configurationProblem) {
+    const errorUrl = new URL("/signin", request.url);
+    errorUrl.searchParams.set("error", configurationProblem);
+    return NextResponse.redirect(errorUrl);
+  }
+
   const state = randomUrlToken();
   const codeVerifier = randomUrlToken();
   const codeChallenge = createCodeChallenge(codeVerifier);
