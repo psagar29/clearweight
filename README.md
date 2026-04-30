@@ -8,6 +8,8 @@
 
 An open-source, AI-powered weighted decision matrix that turns messy tradeoffs into structured, adjustable scores.
 
+### [Try it live at clearweight.vercel.app](https://clearweight.vercel.app)
+
 [![Live Demo](https://img.shields.io/badge/live-clearweight.vercel.app-000?style=flat-square&logo=vercel)](https://clearweight.vercel.app)
 [![License: MIT](https://img.shields.io/badge/license-MIT-333?style=flat-square)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs)](https://nextjs.org)
