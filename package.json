@@ -20,12 +20,15 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@remotion/cli": "^4.0.454",
+    "@remotion/renderer": "^4.0.454",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "remotion": "^4.0.454",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

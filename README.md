@@ -1,42 +1,92 @@
+<div align="center">
+
+<img src="public/logo.svg" alt="Clearweight" width="140" />
+
 # Clearweight
 
-Clearweight is an open-source AI assisted weighted decision matrix. You describe a messy decision, the server asks your signed-in Codex account for a structured starting matrix, and the UI lets you adjust options, criteria, weights, gates, and scores until the tradeoff is explicit.
+**The model proposes. The sliders decide.**
 
-The model proposes. The sliders decide. As they should.
+An open-source, AI-powered weighted decision matrix that turns messy tradeoffs into structured, adjustable scores.
 
-## What it does
+[![Live Demo](https://img.shields.io/badge/live-clearweight.vercel.app-000?style=flat-square&logo=vercel)](https://clearweight.vercel.app)
+[![License: MIT](https://img.shields.io/badge/license-MIT-333?style=flat-square)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
 
-- Turns a plain-language decision brief into editable options, criteria, weights, assumptions, and watchouts.
-- Uses signed-in Codex auth instead of a billable platform API key.
-- Provides an OpenClaw-style Codex OAuth sign-in flow.
-- Supports variable matrix size: Codex can return 2-12 options and 3-10 criteria based on the decision.
-- Normalizes criteria weights to an effective 100% budget for scoring without moving other sliders.
-- Scores every option independently from 0-100 on each criterion.
-- Recalculates the final weighted score out of 100 locally as weights and scores change.
-- Supports hard gates for mandatory constraints.
-- Flags basic sensitivity issues when the winner is fragile.
+<br />
+
+<img src="public/demo.gif" alt="Clearweight demo" width="720" />
+
+</div>
+
+---
+
+## Why Clearweight?
+
+Big decisions feel heavy because they live in your head as a fog of tradeoffs. Clearweight lifts that weight.
+
+Describe your decision in plain language. AI breaks it down into options, criteria, weights, assumptions, and watchouts. Then **you** take the wheel: drag sliders, toggle gates, and watch the scores recalculate until the tradeoff is explicit and the answer is yours.
+
+No spreadsheet gymnastics. No API keys to manage. Just clarity.
+
+---
+
+## How it works
+
+```
+You describe a decision
+        |
+   AI generates a structured matrix
+        |
+   You adjust weights, scores, and gates
+        |
+   Real-time weighted scores reveal the answer
+```
+
+1. **Describe** your decision in a sentence or two
+2. **Review** the AI-generated matrix with options, criteria, weights, and scores
+3. **Adjust** anything: drag weight sliders, change scores, toggle hard gates
+4. **Decide** with confidence, backed by transparent math
+
+---
+
+## Features
+
+| | |
+|---|---|
+| **AI-generated matrices** | 2-12 options, 3-10 criteria, tailored to your decision |
+| **Adjustable weights** | Drag sliders with visual trails showing your changes |
+| **Hard gates** | Mark criteria as mandatory pass/fail constraints |
+| **Sensitivity analysis** | Flags when the winner is fragile |
+| **Dark & light modes** | Premium glassmorphism UI with smooth transitions |
+| **No API key required** | Uses Codex OAuth sign-in, not a billable platform key |
+| **Fully open source** | MIT licensed, deploy anywhere |
+
+---
 
 ## Stack
 
-- Next.js App Router
-- TypeScript
-- Tailwind CSS
-- Zod schema validation
-- Codex OAuth PKCE route handlers
+- **Next.js 16** App Router
+- **React 19** with TypeScript
+- **Tailwind CSS v4** with glassmorphism design system
+- **Zod** schema validation
+- **Codex OAuth PKCE** authentication
 
-## Local setup
+---
+
+## Quick start
 
 ```bash
+git clone https://github.com/psagar29/clearweight.git
+cd clearweight
 npm install
-cp .env.local.example .env.local
+cp .env.local.example .env.local   # add your secrets
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open [localhost:3000](http://localhost:3000). Matrix generation requires Codex sign-in.
 
-Matrix generation requires Codex sign-in. There is no platform `OPENAI_API_KEY` fallback and no local scaffold fallback.
-
-## Environment
+### Environment variables
 
 ```bash
 CODEX_OAUTH_CLIENT_ID=app_EMoamEEZ73f0CkXaXp7hrann
@@ -48,39 +98,52 @@ CODEX_RESPONSES_MODEL=gpt-5.4-mini
 CLEARWEIGHT_COOKIE_SECRET=replace-with-a-long-random-secret
 ```
 
-`CODEX_OAUTH_REDIRECT_URI` is optional locally. By default the app uses the same loopback callback shape as Codex, OpenClaw, and Steward: `http://localhost:1455/auth/callback`. For a hosted deployment, set it to the hosted callback route, for example `https://your-domain.example/api/auth/codex/callback`.
+---
 
-## Codex sign-in
+## Auth flow
 
-OpenClaw's Codex path uses ChatGPT OAuth with PKCE: generate `state` and a code challenge, redirect to `https://auth.openai.com/oauth/authorize`, receive the callback on `http://localhost:1455/auth/callback`, then exchange the authorization code at `https://auth.openai.com/oauth/token`.
+Clearweight uses the same Codex OAuth PKCE flow as OpenClaw and Steward:
 
-Clearweight implements that same sign-in shape at:
-
-```bash
-/signin
-/api/auth/codex/start
-/api/auth/codex/callback
-/api/auth/codex/status
-/api/auth/codex/logout
+```
+/signin                     → sign-in page
+/api/auth/codex/start       → generate PKCE challenge, redirect to auth.openai.com
+/api/auth/codex/callback    → exchange code for tokens, set encrypted cookie
+/api/auth/codex/status      → check session validity
+/api/auth/codex/logout      → clear session
 ```
 
-Current limits:
+No platform API key. No local scaffold fallback. Your Codex session is the key.
 
-- Matrix generation uses the browser's signed-in Clearweight Codex session only.
-- If the browser has no valid `clearweight_codex_session` cookie, generation returns `401`.
-- Sign-in stores the encrypted Codex session in HttpOnly browser cookies. Sign-out clears those cookies.
-- The Codex public OAuth client must accept the redirect URI you deploy with. Local development uses the loopback callback; hosted deployment uses `/api/auth/codex/callback`.
+---
 
 ## Scripts
 
 ```bash
-npm run dev
-npm run build
-npm run lint
-npm run typecheck
-npm run check
+npm run dev          # start dev server
+npm run build        # production build
+npm run lint         # ESLint
+npm run typecheck    # TypeScript check
+npm run check        # lint + typecheck
 ```
+
+---
 
 ## Deploy
 
-Deploy as a standard Next.js app. Set server-side environment variables on the host, especially `CLEARWEIGHT_COOKIE_SECRET` and the hosted `CODEX_OAUTH_REDIRECT_URI`.
+Deploy as a standard Next.js app on Vercel, Railway, or any Node host. Set `CLEARWEIGHT_COOKIE_SECRET` and update `CODEX_OAUTH_REDIRECT_URI` to your hosted callback URL.
+
+The live deployment is at **[clearweight.vercel.app](https://clearweight.vercel.app)**.
+
+---
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+<div align="center">
+
+Built with care by [Pranav Sagar](https://github.com/psagar29)
+
+</div>
