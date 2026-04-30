@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  CODEX_PENDING_COOKIE,
   CODEX_STATE_COOKIE,
   buildAppRedirectUrl,
-  codexSessionCookieHeader,
+  clearCodexPendingCookieHeader,
+  codexSessionCookieHeaders,
   cleanupCodexAuthStores,
   completeCodexOAuthCode,
   secureCookie,
@@ -25,6 +27,7 @@ export async function GET(request: NextRequest) {
   const state = requestUrl.searchParams.get("state");
   const oauthError = requestUrl.searchParams.get("error");
   const cookieState = request.cookies.get(CODEX_STATE_COOKIE)?.value;
+  const pendingCookie = request.cookies.get(CODEX_PENDING_COOKIE)?.value;
 
   if (oauthError) {
     return redirectToSignin(request, "codex_denied");
@@ -35,17 +38,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await completeCodexOAuthCode(state, code);
+    const result = await completeCodexOAuthCode(state, code, pendingCookie);
     const redirectUrl = buildAppRedirectUrl(
       result.pending.appOrigin,
       result.pending.returnTo,
     );
 
     const response = NextResponse.redirect(redirectUrl);
-    response.headers.append(
-      "Set-Cookie",
-      codexSessionCookieHeader(result.sessionId, result.session),
-    );
+    for (const cookie of codexSessionCookieHeaders(result.session)) {
+      response.headers.append("Set-Cookie", cookie);
+    }
+    response.headers.append("Set-Cookie", clearCodexPendingCookieHeader());
     response.cookies.set(CODEX_STATE_COOKIE, "", {
       httpOnly: true,
       maxAge: 0,

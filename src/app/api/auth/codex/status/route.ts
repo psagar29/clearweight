@@ -2,11 +2,10 @@ import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import {
-  CODEX_SESSION_COOKIE,
-  codexSessionCookieHeader,
+  clearCodexSessionCookieHeaders,
+  codexSessionCookieHeaders,
   cleanupCodexAuthStores,
   resolveCodexSession,
-  secureCookie,
 } from "@/lib/codex-oauth";
 
 export const runtime = "nodejs";
@@ -14,22 +13,15 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   cleanupCodexAuthStores();
 
-  const sessionId = request.cookies.get(CODEX_SESSION_COOKIE)?.value;
-  const session = await resolveCodexSession(sessionId);
+  const session = await resolveCodexSession(request.cookies);
 
-  if (!session || !sessionId) {
+  if (!session) {
     const response = NextResponse.json({
       signedIn: false,
       provider: "codex",
     });
-    if (sessionId) {
-      response.cookies.set(CODEX_SESSION_COOKIE, "", {
-        httpOnly: true,
-        maxAge: 0,
-        path: "/",
-        sameSite: "lax",
-        secure: secureCookie(),
-      });
+    for (const cookie of clearCodexSessionCookieHeaders()) {
+      response.headers.append("Set-Cookie", cookie);
     }
     return response;
   }
@@ -42,10 +34,9 @@ export async function GET(request: NextRequest) {
     expiresAt: new Date(session.expiresAt).toISOString(),
     source: "browser-cookie",
   });
-  response.headers.append(
-    "Set-Cookie",
-    codexSessionCookieHeader(sessionId, session),
-  );
+  for (const cookie of codexSessionCookieHeaders(session)) {
+    response.headers.append("Set-Cookie", cookie);
+  }
 
   return response;
 }

@@ -6,6 +6,7 @@ import {
   codexAuthorizeEndpoint,
   codexClientId,
   codexOriginator,
+  codexPendingCookieHeader,
   codexRedirectUri,
   codexScope,
   createCodeChallenge,
@@ -80,6 +81,10 @@ export async function GET(request: NextRequest) {
     sameSite: "lax",
     secure: secureCookie(),
   });
+  response.headers.append(
+    "Set-Cookie",
+    codexPendingCookieHeader(state, pendingCodexOAuth.get(state)!),
+  );
 
   return response;
 }

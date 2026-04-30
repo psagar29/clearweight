@@ -1,8 +1,10 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 
 import {
+  CODEX_PENDING_COOKIE,
   buildAppRedirectUrl,
-  codexSessionCookieHeader,
+  clearCodexPendingCookieHeader,
+  codexSessionCookieHeaders,
   completeCodexOAuthCode,
 } from "@/lib/codex-oauth";
 
@@ -54,7 +56,7 @@ function sendHtml(
   response: ServerResponse,
   status: number,
   body: string,
-  setCookie?: string,
+  setCookie?: string | string[],
 ) {
   response.statusCode = status;
   response.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -63,6 +65,14 @@ function sendHtml(
     response.setHeader("Set-Cookie", setCookie);
   }
   response.end(body);
+}
+
+function cookieFromHeader(header: string | undefined, name: string) {
+  if (!header) return null;
+  const cookies = header.split(";").map((part) => part.trim());
+  const prefix = `${name}=`;
+  const match = cookies.find((cookie) => cookie.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
 }
 
 export async function ensureCodexLoopbackServer() {
@@ -106,7 +116,11 @@ export async function ensureCodexLoopbackServer() {
     }
 
     try {
-      const result = await completeCodexOAuthCode(state, code);
+      const result = await completeCodexOAuthCode(
+        state,
+        code,
+        cookieFromHeader(request.headers.cookie, CODEX_PENDING_COOKIE),
+      );
       const redirectUrl = buildAppRedirectUrl(
         result.pending.appOrigin,
         result.pending.returnTo,
@@ -119,7 +133,10 @@ export async function ensureCodexLoopbackServer() {
           "Authentication completed. Returning to Clearweight.",
           redirectUrl.toString(),
         ),
-        codexSessionCookieHeader(result.sessionId, result.session),
+        [
+          ...codexSessionCookieHeaders(result.session),
+          clearCodexPendingCookieHeader(),
+        ],
       );
     } catch (error) {
       sendHtml(

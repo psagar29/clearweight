@@ -45,7 +45,7 @@ CODEX_OAUTH_ORIGINATOR=pi
 CODEX_OAUTH_REDIRECT_URI=http://localhost:1455/auth/callback
 CODEX_RESPONSES_ENDPOINT=https://chatgpt.com/backend-api/codex/responses
 CODEX_RESPONSES_MODEL=gpt-5.4-mini
-CLEARWEIGHT_CODEX_SESSION_STORE=.clearweight/codex-sessions.json
+CLEARWEIGHT_COOKIE_SECRET=replace-with-a-long-random-secret
 ```
 
 `CODEX_OAUTH_REDIRECT_URI` is optional locally. By default the app uses the same loopback callback shape as Codex, OpenClaw, and Steward: `http://localhost:1455/auth/callback`. For a hosted deployment, set it to the hosted callback route, for example `https://your-domain.example/api/auth/codex/callback`.
@@ -66,10 +66,9 @@ Clearweight implements that same sign-in shape at:
 
 Current limits:
 
-- The local session store is file-backed and ignored by git. Use an encrypted durable store before deploying this for real hosted users.
 - Matrix generation uses the browser's signed-in Clearweight Codex session only.
 - If the browser has no valid `clearweight_codex_session` cookie, generation returns `401`.
-- Sign-out deletes the server-side session and clears the browser cookie.
+- Sign-in stores the encrypted Codex session in HttpOnly browser cookies. Sign-out clears those cookies.
 - The Codex public OAuth client must accept the redirect URI you deploy with. Local development uses the loopback callback; hosted deployment uses `/api/auth/codex/callback`.
 
 ## Scripts
@@ -84,4 +83,4 @@ npm run check
 
 ## Deploy
 
-Deploy as a standard Next.js app. Set server-side environment variables on the host. Replace the in-memory Codex session store before public launch.
+Deploy as a standard Next.js app. Set server-side environment variables on the host, especially `CLEARWEIGHT_COOKIE_SECRET` and the hosted `CODEX_OAUTH_REDIRECT_URI`.

@@ -1,15 +1,13 @@
-import { createHash, randomBytes } from "node:crypto";
 import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import path from "node:path";
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 
 export const CODEX_SESSION_COOKIE = "clearweight_codex_session";
 export const CODEX_STATE_COOKIE = "clearweight_codex_state";
+export const CODEX_PENDING_COOKIE = "clearweight_codex_pending";
 
 export const DEFAULT_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const DEFAULT_CODEX_REDIRECT_URI =
@@ -21,6 +19,8 @@ const PENDING_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_REFRESH_GRACE_MS = 24 * 60 * 60 * 1000;
 const REFRESH_WINDOW_MS = 2 * 60 * 1000;
+const SESSION_COOKIE_CHUNK_SIZE = 3600;
+const MAX_SESSION_COOKIE_CHUNKS = 8;
 
 export type CodexProfile = {
   accountId: string | null;
@@ -61,94 +61,31 @@ export type CodexTokenResponse = {
 
 declare global {
   var clearweightCodexPending: Map<string, PendingCodexOAuth> | undefined;
-  var clearweightCodexSessions: Map<string, CodexSession> | undefined;
-  var clearweightCodexSessionsHydrated: boolean | undefined;
 }
 
 export const pendingCodexOAuth =
   globalThis.clearweightCodexPending ?? new Map<string, PendingCodexOAuth>();
-export const codexSessions =
-  globalThis.clearweightCodexSessions ?? new Map<string, CodexSession>();
 
 globalThis.clearweightCodexPending = pendingCodexOAuth;
-globalThis.clearweightCodexSessions = codexSessions;
+
+type CookieReader = {
+  get(name: string): { value: string } | undefined;
+};
+
+type SealedPendingCodexOAuth = {
+  state: string;
+  pending: PendingCodexOAuth;
+};
 
 function configuredEnv(name: string) {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
 }
 
-function sessionStorePath() {
-  return (
-    configuredEnv("CLEARWEIGHT_CODEX_SESSION_STORE") ??
-    path.join(".clearweight", "codex-sessions.json")
-  );
-}
-
 function sessionIsStale(session: CodexSession, now = Date.now()) {
   const staleAfter =
     session.expiresAt + (session.refreshToken ? SESSION_REFRESH_GRACE_MS : 0);
   return staleAfter <= now;
-}
-
-function readSessionStore() {
-  const storePath = sessionStorePath();
-  if (!existsSync(storePath)) return null;
-
-  try {
-    const parsed = JSON.parse(readFileSync(storePath, "utf8")) as {
-      sessions?: Record<string, CodexSession>;
-    };
-    return parsed.sessions && typeof parsed.sessions === "object"
-      ? parsed.sessions
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistCodexSessions() {
-  const storePath = sessionStorePath();
-  const sessions = Object.fromEntries(
-    [...codexSessions.entries()].filter(([, session]) => !sessionIsStale(session)),
-  );
-
-  mkdirSync(path.dirname(storePath), { recursive: true });
-  writeFileSync(storePath, JSON.stringify({ sessions }, null, 2), {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  try {
-    chmodSync(storePath, 0o600);
-  } catch {
-    // Best effort on platforms/filesystems that ignore POSIX modes.
-  }
-}
-
-function hydrateCodexSessions() {
-  if (globalThis.clearweightCodexSessionsHydrated) return;
-  globalThis.clearweightCodexSessionsHydrated = true;
-
-  const stored = readSessionStore();
-  if (!stored) return;
-
-  for (const [sessionId, session] of Object.entries(stored)) {
-    if (!sessionIsStale(session)) {
-      codexSessions.set(sessionId, session);
-    }
-  }
-}
-
-function setCodexSession(sessionId: string, session: CodexSession) {
-  hydrateCodexSessions();
-  codexSessions.set(sessionId, session);
-  persistCodexSessions();
-}
-
-export function deleteCodexSession(sessionId: string) {
-  hydrateCodexSessions();
-  codexSessions.delete(sessionId);
-  persistCodexSessions();
 }
 
 export function codexIssuer() {
@@ -191,25 +128,131 @@ export function secureCookie() {
   return process.env.NODE_ENV === "production";
 }
 
-export function cleanupCodexAuthStores(now = Date.now()) {
-  hydrateCodexSessions();
-  let didDeleteSession = false;
+function cookieSecret() {
+  const secret =
+    configuredEnv("CLEARWEIGHT_COOKIE_SECRET") ??
+    configuredEnv("AUTH_SECRET") ??
+    (process.env.NODE_ENV === "production"
+      ? undefined
+      : "clearweight-dev-cookie-secret");
 
+  if (!secret) {
+    throw new Error("CLEARWEIGHT_COOKIE_SECRET is required in production.");
+  }
+
+  return secret;
+}
+
+function cookieKey() {
+  return createHash("sha256").update(cookieSecret()).digest();
+}
+
+function sealJson(value: unknown) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", cookieKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(value), "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return [
+    "v1",
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(".");
+}
+
+function unsealJson<T>(sealed: string): T | null {
+  const [version, ivValue, tagValue, ciphertextValue] = sealed.split(".");
+  if (version !== "v1" || !ivValue || !tagValue || !ciphertextValue) return null;
+
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      cookieKey(),
+      Buffer.from(ivValue, "base64url"),
+    );
+    decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(ciphertextValue, "base64url")),
+      decipher.final(),
+    ]).toString("utf8");
+    return JSON.parse(plaintext) as T;
+  } catch {
+    return null;
+  }
+}
+
+function serializeCookie(name: string, value: string, maxAge: number) {
+  const secure = secureCookie() ? "; Secure" : "";
+  return `${name}=${encodeURIComponent(
+    value,
+  )}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`;
+}
+
+function clearCookieHeader(name: string) {
+  return serializeCookie(name, "", 0);
+}
+
+function clearChunkedCookieHeaders(name: string) {
+  return [
+    clearCookieHeader(name),
+    ...Array.from({ length: MAX_SESSION_COOKIE_CHUNKS }, (_, index) =>
+      clearCookieHeader(`${name}.${index}`),
+    ),
+  ];
+}
+
+function chunkedCookieHeaders(name: string, value: string, maxAge: number) {
+  if (value.length <= SESSION_COOKIE_CHUNK_SIZE) {
+    return [
+      serializeCookie(name, value, maxAge),
+      ...Array.from({ length: MAX_SESSION_COOKIE_CHUNKS }, (_, index) =>
+        clearCookieHeader(`${name}.${index}`),
+      ),
+    ];
+  }
+
+  const chunks = value.match(new RegExp(`.{1,${SESSION_COOKIE_CHUNK_SIZE}}`, "g")) ?? [];
+  if (chunks.length > MAX_SESSION_COOKIE_CHUNKS) {
+    throw new Error("Codex session is too large to store in cookies.");
+  }
+
+  return [
+    clearCookieHeader(name),
+    ...chunks.map((chunk, index) =>
+      serializeCookie(`${name}.${index}`, chunk, maxAge),
+    ),
+    ...Array.from(
+      { length: MAX_SESSION_COOKIE_CHUNKS - chunks.length },
+      (_, index) => clearCookieHeader(`${name}.${chunks.length + index}`),
+    ),
+  ];
+}
+
+function readChunkedCookie(cookies: CookieReader, name: string) {
+  const direct = cookies.get(name)?.value;
+  if (direct) return direct;
+
+  const firstChunk = cookies.get(`${name}.0`)?.value;
+  if (!firstChunk) return null;
+
+  let value = firstChunk;
+  for (let index = 1; index < MAX_SESSION_COOKIE_CHUNKS; index += 1) {
+    const chunk = cookies.get(`${name}.${index}`)?.value;
+    if (!chunk) break;
+    value += chunk;
+  }
+  return value;
+}
+
+export function cleanupCodexAuthStores(now = Date.now()) {
   for (const [state, pending] of pendingCodexOAuth) {
     if (now - pending.createdAt > PENDING_TTL_MS) {
       pendingCodexOAuth.delete(state);
     }
-  }
-
-  for (const [sessionId, session] of codexSessions) {
-    if (sessionIsStale(session, now)) {
-      codexSessions.delete(sessionId);
-      didDeleteSession = true;
-    }
-  }
-
-  if (didDeleteSession) {
-    persistCodexSessions();
   }
 }
 
@@ -374,24 +417,54 @@ export async function exchangeCodeForCodexTokens(
   return (await response.json()) as CodexTokenResponse;
 }
 
-export async function completeCodexOAuthCode(state: string, code: string) {
+function pendingFromCookie(
+  sealedPending: string | null | undefined,
+  state: string,
+) {
+  if (!sealedPending) return null;
+
+  const parsed = unsealJson<SealedPendingCodexOAuth>(sealedPending);
+  if (!parsed || parsed.state !== state) return null;
+  if (Date.now() - parsed.pending.createdAt > PENDING_TTL_MS) return null;
+
+  return parsed.pending;
+}
+
+export function codexPendingCookieHeader(
+  state: string,
+  pending: PendingCodexOAuth,
+) {
+  return serializeCookie(
+    CODEX_PENDING_COOKIE,
+    sealJson({ state, pending }),
+    Math.floor(PENDING_TTL_MS / 1000),
+  );
+}
+
+export function clearCodexPendingCookieHeader() {
+  return clearCookieHeader(CODEX_PENDING_COOKIE);
+}
+
+export async function completeCodexOAuthCode(
+  state: string,
+  code: string,
+  sealedPending?: string | null,
+) {
   cleanupCodexAuthStores();
 
-  const pending = pendingCodexOAuth.get(state);
+  const pending =
+    pendingCodexOAuth.get(state) ?? pendingFromCookie(sealedPending, state);
   if (!pending) {
     throw new Error("Codex sign-in expired. Start again.");
   }
 
   const tokens = await exchangeCodeForCodexTokens(code, pending);
   const session = buildSession(tokens);
-  const sessionId = randomUrlToken();
-  setCodexSession(sessionId, session);
   pendingCodexOAuth.delete(state);
 
   return {
     pending,
     session,
-    sessionId,
   };
 }
 
@@ -424,41 +497,50 @@ export async function refreshCodexSession(current: CodexSession) {
   return buildSession(mergeRefreshTokens(current, tokens));
 }
 
-export async function resolveCodexSession(sessionId: string | undefined) {
-  if (!sessionId) return null;
+function validCodexSession(value: unknown): CodexSession | null {
+  if (!value || typeof value !== "object") return null;
+  const session = value as CodexSession;
+  if (
+    typeof session.createdAt !== "number" ||
+    typeof session.expiresAt !== "number" ||
+    typeof session.accessToken !== "string" ||
+    !session.profile ||
+    typeof session.profile !== "object"
+  ) {
+    return null;
+  }
 
+  return session;
+}
+
+export async function resolveCodexSession(cookies: CookieReader) {
   cleanupCodexAuthStores();
-  const current = codexSessions.get(sessionId);
+  const sealedSession = readChunkedCookie(cookies, CODEX_SESSION_COOKIE);
+  if (!sealedSession) return null;
+
+  const current = validCodexSession(unsealJson<CodexSession>(sealedSession));
   if (!current) return null;
+  if (sessionIsStale(current)) return null;
 
   if (current.expiresAt - Date.now() > REFRESH_WINDOW_MS) {
     return current;
   }
 
   try {
-    const refreshed = await refreshCodexSession(current);
-    setCodexSession(sessionId, refreshed);
-    return refreshed;
+    return await refreshCodexSession(current);
   } catch {
-    deleteCodexSession(sessionId);
     return null;
   }
 }
 
-export function codexSessionCookieHeader(
-  sessionId: string,
-  session: Pick<CodexSession, "expiresAt" | "refreshToken">,
-) {
+export function codexSessionCookieHeaders(session: CodexSession) {
   const expiresAt =
     session.expiresAt + (session.refreshToken ? SESSION_REFRESH_GRACE_MS : 0);
   const maxAge = Math.max(60, Math.floor((expiresAt - Date.now()) / 1000));
-  const secure = secureCookie() ? "; Secure" : "";
-  return `${CODEX_SESSION_COOKIE}=${encodeURIComponent(
-    sessionId,
-  )}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`;
+
+  return chunkedCookieHeaders(CODEX_SESSION_COOKIE, sealJson(session), maxAge);
 }
 
-export function clearCodexSessionCookieHeader() {
-  const secure = secureCookie() ? "; Secure" : "";
-  return `${CODEX_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`;
+export function clearCodexSessionCookieHeaders() {
+  return clearChunkedCookieHeaders(CODEX_SESSION_COOKIE);
 }

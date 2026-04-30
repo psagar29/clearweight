@@ -3,9 +3,8 @@ import { z } from "zod";
 
 import { generateMatrixWithCodex } from "@/lib/codex-responses";
 import {
-  CODEX_SESSION_COOKIE,
-  clearCodexSessionCookieHeader,
-  codexSessionCookieHeader,
+  clearCodexSessionCookieHeaders,
+  codexSessionCookieHeaders,
   resolveCodexSession,
 } from "@/lib/codex-oauth";
 
@@ -43,15 +42,14 @@ export async function POST(request: NextRequest) {
   }
 
   const prompt = parsedBody.data.prompt;
-  const codexSessionId = request.cookies.get(CODEX_SESSION_COOKIE)?.value;
-  const codexSession = await resolveCodexSession(codexSessionId);
+  const codexSession = await resolveCodexSession(request.cookies);
 
-  if (!codexSession || !codexSessionId) {
+  if (!codexSession) {
     const response = Response.json({
       error: "Sign in with Codex to generate a matrix.",
     }, { status: 401 });
-    if (codexSessionId) {
-      response.headers.append("Set-Cookie", clearCodexSessionCookieHeader());
+    for (const cookie of clearCodexSessionCookieHeaders()) {
+      response.headers.append("Set-Cookie", cookie);
     }
     return response;
   }
@@ -69,10 +67,9 @@ export async function POST(request: NextRequest) {
       model: result.model,
       accountId: codexSession.profile.accountId,
     });
-    response.headers.append(
-      "Set-Cookie",
-      codexSessionCookieHeader(codexSessionId, codexSession),
-    );
+    for (const cookie of codexSessionCookieHeaders(codexSession)) {
+      response.headers.append("Set-Cookie", cookie);
+    }
     return response;
   } catch (error) {
     console.error(
@@ -86,10 +83,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 502 },
     );
-    response.headers.append(
-      "Set-Cookie",
-      codexSessionCookieHeader(codexSessionId, codexSession),
-    );
+    for (const cookie of codexSessionCookieHeaders(codexSession)) {
+      response.headers.append("Set-Cookie", cookie);
+    }
     return response;
   }
 }
