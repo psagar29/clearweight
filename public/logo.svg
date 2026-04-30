@@ -1,0 +1,37 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- background -->
+  <rect width="512" height="512" rx="112" fill="#0a0a0a"/>
+  <!-- head -->
+  <circle cx="256" cy="85" r="42" stroke="#d4d4d4" stroke-width="16"/>
+  <!-- blindfold -->
+  <line x1="214" y1="85" x2="298" y2="85" stroke="#d4d4d4" stroke-width="19" stroke-linecap="round"/>
+  <!-- body -->
+  <line x1="256" y1="127" x2="256" y2="320" stroke="#d4d4d4" stroke-width="16" stroke-linecap="round"/>
+  <!-- arms holding beam -->
+  <path d="M256 192 L85 170" stroke="#d4d4d4" stroke-width="14" stroke-linecap="round"/>
+  <path d="M256 192 L427 170" stroke="#d4d4d4" stroke-width="14" stroke-linecap="round"/>
+  <!-- left scale strings -->
+  <line x1="85" y1="170" x2="53" y2="256" stroke="#d4d4d4" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+  <line x1="85" y1="170" x2="160" y2="256" stroke="#d4d4d4" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+  <!-- left pan grid -->
+  <rect x="43" y="256" width="128" height="96" rx="21" stroke="#d4d4d4" stroke-width="12"/>
+  <line x1="107" y1="256" x2="107" y2="352" stroke="#d4d4d4" stroke-width="7" opacity="0.35"/>
+  <line x1="43" y1="304" x2="171" y2="304" stroke="#d4d4d4" stroke-width="7" opacity="0.35"/>
+  <!-- right scale strings -->
+  <line x1="427" y1="170" x2="352" y2="256" stroke="#d4d4d4" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+  <line x1="427" y1="170" x2="459" y2="256" stroke="#d4d4d4" stroke-width="10" stroke-linecap="round" opacity="0.5"/>
+  <!-- right pan grid -->
+  <rect x="341" y="256" width="128" height="96" rx="21" stroke="#d4d4d4" stroke-width="12"/>
+  <line x1="405" y1="256" x2="405" y2="352" stroke="#d4d4d4" stroke-width="7" opacity="0.35"/>
+  <line x1="341" y1="304" x2="469" y2="304" stroke="#d4d4d4" stroke-width="7" opacity="0.35"/>
+  <!-- score dots in pans -->
+  <circle cx="75" cy="280" r="10" fill="#d4d4d4" opacity="0.6"/>
+  <circle cx="139" cy="330" r="10" fill="#d4d4d4" opacity="0.4"/>
+  <circle cx="437" cy="280" r="10" fill="#d4d4d4" opacity="0.4"/>
+  <circle cx="373" cy="330" r="10" fill="#d4d4d4" opacity="0.6"/>
+  <!-- dress / robe -->
+  <path d="M256 320 L192 470" stroke="#d4d4d4" stroke-width="14" stroke-linecap="round"/>
+  <path d="M256 320 L320 470" stroke="#d4d4d4" stroke-width="14" stroke-linecap="round"/>
+  <!-- base -->
+  <line x1="171" y1="470" x2="341" y2="470" stroke="#d4d4d4" stroke-width="16" stroke-linecap="round"/>
+</svg>

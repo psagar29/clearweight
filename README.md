@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Clearweight
 
-## Getting Started
+Clearweight is an open-source AI assisted weighted decision matrix. You describe a messy decision, the server asks your signed-in Codex account for a structured starting matrix, and the UI lets you adjust options, criteria, weights, gates, and scores until the tradeoff is explicit.
 
-First, run the development server:
+The model proposes. The sliders decide. As they should.
+
+## What it does
+
+- Turns a plain-language decision brief into editable options, criteria, weights, assumptions, and watchouts.
+- Uses signed-in Codex auth instead of a billable platform API key.
+- Provides an OpenClaw-style Codex OAuth sign-in flow.
+- Supports variable matrix size: Codex can return 2-12 options and 3-10 criteria based on the decision.
+- Normalizes criteria weights to an effective 100% budget for scoring without moving other sliders.
+- Scores every option independently from 0-100 on each criterion.
+- Recalculates the final weighted score out of 100 locally as weights and scores change.
+- Supports hard gates for mandatory constraints.
+- Flags basic sensitivity issues when the winner is fragile.
+
+## Stack
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- Zod schema validation
+- Codex OAuth PKCE route handlers
+
+## Local setup
+
+```bash
+npm install
+cp .env.local.example .env.local
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Matrix generation requires Codex sign-in. There is no platform `OPENAI_API_KEY` fallback and no local scaffold fallback.
+
+## Environment
+
+```bash
+CODEX_OAUTH_CLIENT_ID=app_EMoamEEZ73f0CkXaXp7hrann
+CODEX_OAUTH_SCOPE=openid profile email offline_access
+CODEX_OAUTH_ORIGINATOR=pi
+CODEX_OAUTH_REDIRECT_URI=http://localhost:1455/auth/callback
+CODEX_RESPONSES_ENDPOINT=https://chatgpt.com/backend-api/codex/responses
+CODEX_RESPONSES_MODEL=gpt-5.4-mini
+CLEARWEIGHT_CODEX_SESSION_STORE=.clearweight/codex-sessions.json
+```
+
+`CODEX_OAUTH_REDIRECT_URI` is optional locally. By default the app uses the same loopback callback shape as Codex, OpenClaw, and Steward: `http://localhost:1455/auth/callback`.
+
+## Codex sign-in
+
+OpenClaw's Codex path uses ChatGPT OAuth with PKCE: generate `state` and a code challenge, redirect to `https://auth.openai.com/oauth/authorize`, receive the callback on `http://localhost:1455/auth/callback`, then exchange the authorization code at `https://auth.openai.com/oauth/token`.
+
+Clearweight implements that same sign-in shape at:
+
+```bash
+/signin
+/api/auth/codex/start
+/api/auth/codex/callback
+/api/auth/codex/status
+/api/auth/codex/logout
+```
+
+Current limits:
+
+- The local session store is file-backed and ignored by git. Use an encrypted durable store before deploying this for real hosted users.
+- Matrix generation uses the browser's signed-in Clearweight Codex session only.
+- If the browser has no valid `clearweight_codex_session` cookie, generation returns `401`.
+- Sign-out deletes the server-side session and clears the browser cookie.
+- The Codex public OAuth client is a native loopback client. This local callback flow is for local app use; a hosted public app needs a different production auth strategy. Boring, but cheaper than pretending OAuth is fairy dust.
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run lint
+npm run typecheck
+npm run check
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Deploy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy as a standard Next.js app. Set server-side environment variables on the host. Replace the in-memory Codex session store before public launch.
