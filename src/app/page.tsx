@@ -20,6 +20,14 @@ import {
 } from "@/lib/decision-matrix";
 
 /* ── auth ── */
+type GenerationStatus = {
+  mode: "auto" | "codex" | "openai";
+  provider: "codex" | "openai";
+  signInRequired: boolean;
+  available: boolean;
+  message: string | null;
+};
+
 type AuthStatus = {
   signedIn: boolean;
   provider: "codex";
@@ -36,6 +44,7 @@ type AuthStatus = {
     problem: string | null;
     message: string | null;
   };
+  generation?: GenerationStatus;
 };
 
 /* ── monochrome option palette ── */
@@ -83,6 +92,11 @@ export default function Home() {
     : null;
   const signInAvailable = auth?.configuration?.signInAvailable ?? true;
   const signInProblemMessage = auth?.configuration?.message ?? null;
+  const generation = auth?.generation;
+  const generationProvider = generation?.provider ?? "codex";
+  const generationRequiresSignIn = generation?.signInRequired ?? true;
+  const generationAvailable = generation?.available ?? false;
+  const generationMessage = generation?.message ?? null;
 
   const ranked = useMemo(() => (matrix ? rankOptions(matrix) : []), [matrix]);
   const leader = ranked[0] ?? null;
@@ -113,7 +127,12 @@ export default function Home() {
     try {
       await fetch("/api/auth/codex/logout", { method: "POST" });
     } finally {
-      setAuth({ signedIn: false, provider: "codex" });
+      setAuth((current) => ({
+        signedIn: false,
+        provider: "codex",
+        configuration: current?.configuration,
+        generation: current?.generation,
+      }));
       setMatrix(null);
       setPrompt("");
       setError(null);
@@ -128,7 +147,13 @@ export default function Home() {
   const generate = useCallback(async () => {
     const trimmed = prompt.trim();
     if (trimmed.length < 8) { setError("Describe your decision in at least a sentence."); return; }
-    if (!auth?.signedIn) {
+    if (!generationAvailable) {
+      setNeedsAuth(false);
+      setError(generationMessage ?? "AI generation is not configured for this deployment.");
+      setPhase("input");
+      return;
+    }
+    if (generationRequiresSignIn && !auth?.signedIn) {
       setNeedsAuth(true);
       setError(signInProblemMessage ?? "Sign in with your Codex account before generating a matrix.");
       setPhase("input");
@@ -145,7 +170,12 @@ export default function Home() {
         body: JSON.stringify({ prompt: trimmed }),
       });
       if (res.status === 401) {
-        setAuth({ signedIn: false, provider: "codex" });
+        setAuth((current) => ({
+          signedIn: false,
+          provider: "codex",
+          configuration: current?.configuration,
+          generation: current?.generation,
+        }));
         setNeedsAuth(true);
         setError("Your Codex session is not active in this browser. Sign in again.");
         setPhase("input");
@@ -169,7 +199,14 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
-  }, [auth?.signedIn, prompt, signInProblemMessage]);
+  }, [
+    auth?.signedIn,
+    generationAvailable,
+    generationMessage,
+    generationRequiresSignIn,
+    prompt,
+    signInProblemMessage,
+  ]);
 
   function updateWeight(id: string, w: number) {
     setMatrix((cur) => cur ? { ...cur, criteria: cur.criteria.map((c) => c.id === id ? { ...c, weight: clampWeight(w) } : c) } : cur);
@@ -202,7 +239,7 @@ export default function Home() {
       <AuthGate
         light={light}
         loading
-        message="Checking this browser's Codex session..."
+        message="Checking this browser and generation provider..."
         signInAvailable={signInAvailable}
         signInProblemMessage={signInProblemMessage}
         onToggleTheme={() => setLight((v) => !v)}
@@ -210,7 +247,7 @@ export default function Home() {
     );
   }
 
-  if (!auth?.signedIn) {
+  if (generationRequiresSignIn && !auth?.signedIn) {
     return (
       <AuthGate
         light={light}
@@ -243,7 +280,11 @@ export default function Home() {
           >
             <GitHubIcon size={14} />
           </a>
-          <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
+          {generationRequiresSignIn || signedInName ? (
+            <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
+          ) : (
+            <ProviderChip provider={generationProvider} available={generationAvailable} />
+          )}
           <ThemeToggle light={light} onToggle={() => setLight((v) => !v)} />
         </div>
 
@@ -301,8 +342,14 @@ export default function Home() {
             </div>
           )}
 
+          {!generationAvailable && phase === "input" && !error && (
+            <p className="mt-5 text-center text-[12px] leading-relaxed anim-fade" style={{ color: "#fbbf24" }}>
+              {generationMessage ?? "AI generation is not configured for this deployment."}
+            </p>
+          )}
+
           {/* auth nudge — shown when generate returned 401 */}
-          {needsAuth && phase === "input" && (
+          {generationRequiresSignIn && needsAuth && phase === "input" && (
             <div className="mt-5 anim-fade">
               <div className="glass glass-clean px-5 py-4" style={{ background: "var(--card-bg)", border: "1px solid var(--border-mid)", boxShadow: "var(--shadow-md)" }}>
                 <div className="flex items-start gap-3">
@@ -346,7 +393,7 @@ export default function Home() {
           )}
 
           {/* not signed in hint — subtle, below input */}
-          {!authLoading && !auth?.signedIn && !needsAuth && phase === "input" && (
+          {generationRequiresSignIn && !authLoading && !auth?.signedIn && !needsAuth && phase === "input" && (
             <div className="mt-4 flex items-center justify-center gap-2 anim-fade">
               <span className="text-[11px]" style={{ color: "var(--faint)" }}>
                 {signInAvailable ? (
@@ -399,7 +446,11 @@ export default function Home() {
               <RotateCcw size={12} />
             </button>
             <div className="mx-0.5 h-5 w-px" style={{ background: "var(--border)" }} />
-            <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
+            {generationRequiresSignIn || signedInName ? (
+              <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
+            ) : (
+              <ProviderChip provider={generationProvider} available={generationAvailable} />
+            )}
             <ThemeToggle light={light} onToggle={() => setLight((v) => !v)} />
           </div>
         </div>
@@ -757,6 +808,26 @@ function ThemeToggle({ light, onToggle }: { light: boolean; onToggle: () => void
     >
       {light ? <Moon size={13} /> : <Sun size={13} />}
     </button>
+  );
+}
+
+/* ── Generation provider chip ── */
+function ProviderChip({
+  provider,
+  available,
+}: {
+  provider: "codex" | "openai";
+  available: boolean;
+}) {
+  return (
+    <span
+      className="flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[10px] font-medium"
+      style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--muted)" }}
+      title={provider === "openai" ? "Generation uses the server OpenAI API key." : "Generation uses this browser's Codex session."}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${available ? "bg-emerald-400" : "bg-amber-400"}`} />
+      {provider === "openai" ? "API" : "Codex"}
+    </span>
   );
 }
 

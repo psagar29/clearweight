@@ -13,8 +13,10 @@ import {
 const DEFAULT_CODEX_RESPONSES_ENDPOINT =
   "https://chatgpt.com/backend-api/codex/responses";
 const DEFAULT_CODEX_RESPONSES_MODEL = "gpt-5.4-mini";
+const DEFAULT_OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
+const DEFAULT_OPENAI_RESPONSES_MODEL = "gpt-5.4-mini";
 
-type CodexResponsesResult = {
+export type MatrixGenerationResult = {
   matrix: DecisionMatrix;
   model: string;
 };
@@ -36,6 +38,22 @@ function codexResponsesEndpoint() {
 
 function codexResponsesModel() {
   return configuredEnv("CODEX_RESPONSES_MODEL") ?? DEFAULT_CODEX_RESPONSES_MODEL;
+}
+
+function openAIResponsesEndpoint() {
+  return configuredEnv("OPENAI_RESPONSES_ENDPOINT") ?? DEFAULT_OPENAI_RESPONSES_ENDPOINT;
+}
+
+function openAIResponsesModel() {
+  return configuredEnv("OPENAI_RESPONSES_MODEL") ?? DEFAULT_OPENAI_RESPONSES_MODEL;
+}
+
+function openAIAPIKey() {
+  return configuredEnv("OPENAI_API_KEY");
+}
+
+export function hasOpenAIResponsesKey() {
+  return Boolean(openAIAPIKey());
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -340,9 +358,9 @@ function parseSseEvent(rawEvent: string) {
   return data ? { data, eventType } : null;
 }
 
-async function readCodexStream(response: Response) {
+async function readResponsesStream(response: Response, source: string) {
   if (!response.body) {
-    throw new Error("Codex Responses returned an empty stream.");
+    throw new Error(`${source} Responses returned an empty stream.`);
   }
 
   const reader = response.body.getReader();
@@ -396,15 +414,42 @@ async function readCodexStream(response: Response) {
   }
 
   if (state.errorMessage) {
-    throw new Error(`Codex stream failed: ${state.errorMessage}`);
+    throw new Error(`${source} stream failed: ${state.errorMessage}`);
   }
 
   const text = (state.deltaText || state.finalText || "").trim();
   if (!text) {
-    throw new Error("Codex Responses returned no readable text.");
+    throw new Error(`${source} Responses returned no readable text.`);
   }
 
   return text;
+}
+
+async function readResponsesText(response: Response, source: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    return readResponsesStream(response, source);
+  }
+
+  const payload = (await response.json().catch(async () => {
+    const text = await response.text().catch(() => "");
+    return text ? { output_text: text } : null;
+  })) as unknown;
+  const text = extractText(payload);
+  if (!text) {
+    throw new Error(`${source} Responses returned no readable text.`);
+  }
+
+  return text;
+}
+
+function parseMatrixText(text: string) {
+  const json = extractJSONObject(text);
+  const parsed = decisionMatrixSchema.parse(
+    normalizeMatrixCandidate(JSON.parse(json)),
+  );
+
+  return sanitizeMatrix(parsed);
 }
 
 function matrixInstructions(systemPrompt: string) {
@@ -433,7 +478,7 @@ export async function generateMatrixWithCodex(
   session: CodexSession,
   prompt: string,
   systemPrompt: string,
-): Promise<CodexResponsesResult> {
+): Promise<MatrixGenerationResult> {
   const model = codexResponsesModel();
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${session.accessToken}`,
@@ -461,7 +506,7 @@ export async function generateMatrixWithCodex(
           content: [
             {
               type: "input_text",
-              text: prompt,
+              text: `${prompt}\n\nReturn valid JSON only.`,
             },
           ],
         },
@@ -481,14 +526,66 @@ export async function generateMatrixWithCodex(
     throw new Error(`Codex Responses failed with ${response.status}: ${responseText}`);
   }
 
-  const text = await readCodexStream(response);
-  const json = extractJSONObject(text);
-  const parsed = decisionMatrixSchema.parse(
-    normalizeMatrixCandidate(JSON.parse(json)),
-  );
+  const text = await readResponsesStream(response, "Codex");
 
   return {
-    matrix: sanitizeMatrix(parsed),
+    matrix: parseMatrixText(text),
+    model,
+  };
+}
+
+export async function generateMatrixWithOpenAI(
+  prompt: string,
+  systemPrompt: string,
+): Promise<MatrixGenerationResult> {
+  const apiKey = openAIAPIKey();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not configured.");
+  }
+
+  const model = openAIResponsesModel();
+  const response = await fetch(openAIResponsesEndpoint(), {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      store: false,
+      instructions: matrixInstructions(systemPrompt),
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `${prompt}\n\nReturn valid json only.`,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
+      reasoning: {
+        effort: "low",
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`OpenAI Responses failed with ${response.status}: ${responseText}`);
+  }
+
+  const text = await readResponsesText(response, "OpenAI");
+
+  return {
+    matrix: parseMatrixText(text),
     model,
   };
 }

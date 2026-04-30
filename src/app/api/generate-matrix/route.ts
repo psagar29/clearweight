@@ -1,12 +1,21 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { generateMatrixWithCodex } from "@/lib/codex-responses";
+import {
+  generateMatrixWithCodex,
+  generateMatrixWithOpenAI,
+} from "@/lib/codex-responses";
 import {
   clearCodexSessionCookieHeaders,
+  codexOAuthConfigurationProblem,
+  codexOAuthProblemMessage,
   codexSessionCookieHeaders,
   resolveCodexSession,
 } from "@/lib/codex-oauth";
+import {
+  matrixGenerationStatusFor,
+  requestAppOrigin,
+} from "@/lib/generation-provider";
 
 export const runtime = "nodejs";
 
@@ -42,12 +51,59 @@ export async function POST(request: NextRequest) {
   }
 
   const prompt = parsedBody.data.prompt;
+  const appOrigin = requestAppOrigin(request);
+  const codexProblem = codexOAuthConfigurationProblem(appOrigin);
+  const generation = matrixGenerationStatusFor(appOrigin, !codexProblem);
+
+  if (!generation.available) {
+    return Response.json(
+      {
+        error:
+          generation.provider === "codex"
+            ? codexOAuthProblemMessage(codexProblem) ?? generation.message
+            : generation.message,
+        source: generation.provider,
+      },
+      { status: 503 },
+    );
+  }
+
+  if (generation.provider === "openai") {
+    try {
+      const result = await generateMatrixWithOpenAI(prompt, SYSTEM_PROMPT);
+
+      return Response.json({
+        matrix: result.matrix,
+        source: "openai",
+        model: result.model,
+      });
+    } catch (error) {
+      console.error(
+        "OpenAI matrix generation failed:",
+        error instanceof Error ? error.message : "Unknown error",
+      );
+
+      return Response.json(
+        {
+          error:
+            "OpenAI generation failed. The server API key may be invalid, out of quota, or missing access to the selected model.",
+          source: "openai",
+        },
+        { status: 502 },
+      );
+    }
+  }
+
   const codexSession = await resolveCodexSession(request.cookies);
 
   if (!codexSession) {
-    const response = Response.json({
-      error: "Sign in with Codex to generate a matrix.",
-    }, { status: 401 });
+    const response = Response.json(
+      {
+        error: "Sign in with Codex to generate a matrix.",
+        source: "codex",
+      },
+      { status: 401 },
+    );
     for (const cookie of clearCodexSessionCookieHeaders()) {
       response.headers.append("Set-Cookie", cookie);
     }
@@ -79,7 +135,8 @@ export async function POST(request: NextRequest) {
 
     const response = Response.json(
       {
-        error: "Codex generation failed. No fallback provider is configured.",
+        error: "Codex generation failed. The selected provider did not return a matrix.",
+        source: "codex",
       },
       { status: 502 },
     );
