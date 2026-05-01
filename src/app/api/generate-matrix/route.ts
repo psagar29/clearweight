@@ -23,6 +23,11 @@ const generateRequestSchema = z.object({
   prompt: z.string().min(8).max(4000),
 });
 
+function openAIAPIKeyFromRequest(request: NextRequest) {
+  const value = request.headers.get("x-openai-api-key")?.trim();
+  return value ? value : null;
+}
+
 const SYSTEM_PROMPT = `You turn messy, uncertain decisions into editable weighted decision matrices.
 
 Return a practical starting matrix, not a final verdict.
@@ -69,8 +74,23 @@ export async function POST(request: NextRequest) {
   }
 
   if (generation.provider === "openai") {
+    const apiKey = openAIAPIKeyFromRequest(request);
+    if (!apiKey) {
+      return Response.json(
+        {
+          error: "Enter your OpenAI API key for this browser session.",
+          source: "openai",
+        },
+        { status: 400 },
+      );
+    }
+
     try {
-      const result = await generateMatrixWithOpenAI(prompt, SYSTEM_PROMPT);
+      const result = await generateMatrixWithOpenAI(
+        prompt,
+        SYSTEM_PROMPT,
+        apiKey,
+      );
 
       return Response.json({
         matrix: result.matrix,
@@ -86,7 +106,7 @@ export async function POST(request: NextRequest) {
       return Response.json(
         {
           error:
-            "OpenAI generation failed. The server API key may be invalid, out of quota, or missing access to the selected model.",
+            "OpenAI generation failed. Check that your API key has quota and access to the selected model.",
           source: "openai",
         },
         { status: 502 },

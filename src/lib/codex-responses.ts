@@ -48,14 +48,6 @@ function openAIResponsesModel() {
   return configuredEnv("OPENAI_RESPONSES_MODEL") ?? DEFAULT_OPENAI_RESPONSES_MODEL;
 }
 
-function openAIAPIKey() {
-  return configuredEnv("OPENAI_API_KEY");
-}
-
-export function hasOpenAIResponsesKey() {
-  return Boolean(openAIAPIKey());
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -537,12 +529,8 @@ export async function generateMatrixWithCodex(
 export async function generateMatrixWithOpenAI(
   prompt: string,
   systemPrompt: string,
+  apiKey: string,
 ): Promise<MatrixGenerationResult> {
-  const apiKey = openAIAPIKey();
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured.");
-  }
-
   const model = openAIResponsesModel();
   const response = await fetch(openAIResponsesEndpoint(), {
     method: "POST",

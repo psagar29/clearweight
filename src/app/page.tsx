@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ChevronDown, ExternalLink, KeyRound, Loader2, LogOut, Moon, RotateCcw, Send, Sun, Trophy } from "lucide-react";
+import { AlertTriangle, ChevronDown, ExternalLink, KeyRound, Loader2, LogOut, Moon, RotateCcw, Send, Sun, Trophy, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -24,6 +24,7 @@ type GenerationStatus = {
   mode: "auto" | "codex" | "openai";
   provider: "codex" | "openai";
   signInRequired: boolean;
+  apiKeyRequired: boolean;
   available: boolean;
   message: string | null;
 };
@@ -71,6 +72,7 @@ function scoreLabel(s: number) {
 }
 
 type Phase = "input" | "loading" | "lifting" | "matrix";
+const OPENAI_API_KEY_STORAGE_KEY = "clearweight_openai_api_key";
 
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("input");
@@ -85,6 +87,10 @@ export default function Home() {
   const [initialWeights, setInitialWeights] = useState<Map<string, number>>(new Map());
   const [needsAuth, setNeedsAuth] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [openAIKey, setOpenAIKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.sessionStorage.getItem(OPENAI_API_KEY_STORAGE_KEY) ?? "";
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
   const signedInName = auth?.signedIn
@@ -95,8 +101,10 @@ export default function Home() {
   const generation = auth?.generation;
   const generationProvider = generation?.provider ?? "codex";
   const generationRequiresSignIn = generation?.signInRequired ?? true;
+  const generationRequiresApiKey = generation?.apiKeyRequired ?? false;
   const generationAvailable = generation?.available ?? false;
   const generationMessage = generation?.message ?? null;
+  const hasOpenAIKey = openAIKey.trim().length > 0;
 
   const ranked = useMemo(() => (matrix ? rankOptions(matrix) : []), [matrix]);
   const leader = ranked[0] ?? null;
@@ -144,6 +152,24 @@ export default function Home() {
     }
   }
 
+  function updateOpenAIKey(value: string) {
+    setOpenAIKey(value);
+    const trimmed = value.trim();
+    if (trimmed) {
+      window.sessionStorage.setItem(OPENAI_API_KEY_STORAGE_KEY, trimmed);
+    } else {
+      window.sessionStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
+    }
+    if (error === "Enter your OpenAI API key for this browser session.") {
+      setError(null);
+    }
+  }
+
+  function clearOpenAIKey() {
+    setOpenAIKey("");
+    window.sessionStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
+  }
+
   const generate = useCallback(async () => {
     const trimmed = prompt.trim();
     if (trimmed.length < 8) { setError("Describe your decision in at least a sentence."); return; }
@@ -159,14 +185,25 @@ export default function Home() {
       setPhase("input");
       return;
     }
+    if (generationRequiresApiKey && !hasOpenAIKey) {
+      setNeedsAuth(false);
+      setError("Enter your OpenAI API key for this browser session.");
+      setPhase("input");
+      return;
+    }
     setIsGenerating(true);
     setError(null);
     setNeedsAuth(false);
     setPhase("loading");
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (generationRequiresApiKey) {
+        headers["X-OpenAI-API-Key"] = openAIKey.trim();
+      }
+
       const res = await fetch("/api/generate-matrix", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ prompt: trimmed }),
       });
       if (res.status === 401) {
@@ -203,7 +240,10 @@ export default function Home() {
     auth?.signedIn,
     generationAvailable,
     generationMessage,
+    generationRequiresApiKey,
     generationRequiresSignIn,
+    hasOpenAIKey,
+    openAIKey,
     prompt,
     signInProblemMessage,
   ]);
@@ -283,7 +323,10 @@ export default function Home() {
           {generationRequiresSignIn || signedInName ? (
             <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
           ) : (
-            <ProviderChip provider={generationProvider} available={generationAvailable} />
+            <ProviderChip
+              provider={generationProvider}
+              available={generationAvailable && (!generationRequiresApiKey || hasOpenAIKey)}
+            />
           )}
           <ThemeToggle light={light} onToggle={() => setLight((v) => !v)} />
         </div>
@@ -326,6 +369,15 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {generationRequiresApiKey && (
+            <ApiKeyPanel
+              value={openAIKey}
+              disabled={phase === "loading"}
+              onChange={updateOpenAIKey}
+              onClear={clearOpenAIKey}
+            />
+          )}
 
           {/* loading skeleton */}
           {phase === "loading" && (
@@ -449,7 +501,10 @@ export default function Home() {
             {generationRequiresSignIn || signedInName ? (
               <AuthChip loading={authLoading} name={signedInName} onSignOut={signOut} busy={signingOut} />
             ) : (
-              <ProviderChip provider={generationProvider} available={generationAvailable} />
+              <ProviderChip
+                provider={generationProvider}
+                available={generationAvailable && (!generationRequiresApiKey || hasOpenAIKey)}
+              />
             )}
             <ThemeToggle light={light} onToggle={() => setLight((v) => !v)} />
           </div>
@@ -673,6 +728,82 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <span className="label-caps mb-3 block">{children}</span>;
 }
 
+function ApiKeyPanel({
+  value,
+  disabled,
+  onChange,
+  onClear,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+}) {
+  const hasValue = value.trim().length > 0;
+
+  return (
+    <div
+      className="mt-3 glass glass-clean px-4 py-3.5 anim-fade"
+      style={{ background: "var(--card-bg)", border: "1px solid var(--border-mid)", boxShadow: "var(--shadow-md)" }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px]"
+          style={{ background: "var(--surface-glass)", border: "1px solid var(--border-mid)" }}
+        >
+          <KeyRound size={14} style={{ color: "var(--accent)" }} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--faint)" }} htmlFor="openai-api-key">
+              OpenAI API key
+            </label>
+            <a
+              href="https://platform.openai.com/settings/organization/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] font-medium transition-colors hover:text-[var(--fg)]"
+              style={{ color: "var(--muted)" }}
+            >
+              Get key
+              <ExternalLink size={9} />
+            </a>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="openai-api-key"
+              type="password"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              disabled={disabled}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="sk-..."
+              className="h-9 min-w-0 flex-1 rounded-[10px] bg-transparent px-3 text-[13px] outline-none placeholder:text-[var(--faint)] disabled:opacity-50"
+              style={{ border: "1px solid var(--border)", color: "var(--fg)", caretColor: "var(--accent)" }}
+            />
+            {hasValue && (
+              <button
+                type="button"
+                onClick={onClear}
+                disabled={disabled}
+                aria-label="Forget API key"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
+                style={{ background: "var(--surface-hover)", color: "var(--muted)" }}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--faint)" }}>
+            Stored only in this browser session. Clearweight sends it with generation requests and does not save it on the server.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthGate({
   light,
   loading = false,
@@ -823,7 +954,7 @@ function ProviderChip({
     <span
       className="flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[10px] font-medium"
       style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--muted)" }}
-      title={provider === "openai" ? "Generation uses the server OpenAI API key." : "Generation uses this browser's Codex session."}
+      title={provider === "openai" ? "Generation uses the API key stored in this browser session." : "Generation uses this browser's Codex session."}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${available ? "bg-emerald-400" : "bg-amber-400"}`} />
       {provider === "openai" ? "API" : "Codex"}

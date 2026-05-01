@@ -30,7 +30,7 @@ Big decisions feel heavy because they live in your head as a fog of tradeoffs. C
 Describe your decision in plain language. AI breaks it down into options, criteria, weights, assumptions, and watchouts. Then **you** take the wheel: drag sliders, toggle gates, and watch the scores recalculate until the tradeoff is explicit and the answer is yours.
 
 No spreadsheet gymnastics. Local runs can use your Codex session; public hosted
-deployments can use a server-side OpenAI API key.
+deployments ask each user for their own OpenAI API key for that browser session.
 
 ---
 
@@ -62,7 +62,7 @@ You describe a decision
 | **Hard gates** | Mark criteria as mandatory pass/fail constraints |
 | **Sensitivity analysis** | Flags when the winner is fragile |
 | **Dark & light modes** | Premium glassmorphism UI with smooth transitions |
-| **Dual generation providers** | Local defaults to Codex OAuth; hosted deployments default to OpenAI API |
+| **Dual generation providers** | Local defaults to Codex OAuth; hosted deployments use each user's API key |
 | **Fully open source** | MIT licensed, deploy anywhere |
 
 ---
@@ -73,7 +73,7 @@ You describe a decision
 - **React 19** with TypeScript
 - **Tailwind CSS v4** with glassmorphism design system
 - **Zod** schema validation
-- **Provider-aware generation** with Codex OAuth locally and OpenAI Responses API on hosted deployments
+- **Provider-aware generation** with Codex OAuth locally and user-supplied OpenAI keys on hosted deployments
 
 ---
 
@@ -96,7 +96,6 @@ local matrix generation requires Codex sign-in.
 CLEARWEIGHT_AI_PROVIDER=auto
 
 # Hosted/public provider
-OPENAI_API_KEY=
 OPENAI_RESPONSES_ENDPOINT=https://api.openai.com/v1/responses
 OPENAI_RESPONSES_MODEL=gpt-5.4-mini
 
@@ -111,9 +110,11 @@ CLEARWEIGHT_COOKIE_SECRET=replace-with-a-long-random-secret
 ```
 
 `CLEARWEIGHT_AI_PROVIDER=auto` chooses Codex on loopback origins such as
-`localhost` and OpenAI API on hosted origins such as Vercel. Set it explicitly
-to `codex` or `openai` when you want to force one provider. There is no hidden
-fallback: the selected provider either works or returns a configuration error.
+`localhost` and OpenAI API on hosted origins such as Vercel. Hosted OpenAI mode
+does not use a server API key; each user enters their own key, which is held in
+browser `sessionStorage` and sent only with generation requests. Set the provider
+explicitly to `codex` or `openai` when you want to force one provider. There is
+no hidden fallback: the selected provider either works or returns a clear error.
 
 ---
 
@@ -137,9 +138,10 @@ Important hosted-auth constraint: the default Codex client ID
 usable with the local loopback callback (`http://localhost:1455/auth/callback`).
 It is not allowed to redirect to `https://clearweight.vercel.app/...`; OpenAI
 returns a generic `unknown_error` for that invalid combination. Hosted
-Clearweight therefore defaults to the OpenAI API provider unless you configure a
-Codex/OpenAI OAuth client that is explicitly allowed to redirect to the hosted
-domain and force `CLEARWEIGHT_AI_PROVIDER=codex`.
+Clearweight therefore defaults to the OpenAI API provider on hosted deployments
+and asks the user for their own API key unless you configure a Codex/OpenAI OAuth
+client that is explicitly allowed to redirect to the hosted domain and force
+`CLEARWEIGHT_AI_PROVIDER=codex`.
 
 ---
 
@@ -158,10 +160,10 @@ npm run check        # lint + typecheck
 ## Deploy
 
 Deploy as a standard Next.js app on Vercel, Railway, or any Node host. Set
-`CLEARWEIGHT_COOKIE_SECRET` and `OPENAI_API_KEY` for public hosted generation.
-For hosted Codex sign-in instead, also set a `CODEX_OAUTH_CLIENT_ID` whose
-allowed redirect URI includes your hosted callback, then set
-`CODEX_OAUTH_REDIRECT_URI` to that callback URL and
+`CLEARWEIGHT_COOKIE_SECRET`. Public hosted generation uses the API key entered
+by the current user in their browser session. For hosted Codex sign-in instead,
+also set a `CODEX_OAUTH_CLIENT_ID` whose allowed redirect URI includes your
+hosted callback, then set `CODEX_OAUTH_REDIRECT_URI` to that callback URL and
 `CLEARWEIGHT_AI_PROVIDER=codex`.
 
 The live deployment is at **[clearweight.vercel.app](https://clearweight.vercel.app)**.

@@ -1,4 +1,3 @@
-import { hasOpenAIResponsesKey } from "@/lib/codex-responses";
 import { isLoopbackUrl } from "@/lib/codex-oauth";
 
 export type GenerationProvider = "codex" | "openai";
@@ -8,6 +7,7 @@ export type GenerationStatus = {
   mode: GenerationMode;
   provider: GenerationProvider;
   signInRequired: boolean;
+  apiKeyRequired: boolean;
   available: boolean;
   message: string | null;
 };
@@ -57,15 +57,13 @@ export function matrixGenerationStatusFor(
   const provider = matrixGenerationProviderFor(appOrigin);
 
   if (provider === "openai") {
-    const available = hasOpenAIResponsesKey();
     return {
       mode,
       provider,
       signInRequired: false,
-      available,
-      message: available
-        ? null
-        : "OpenAI API key is not configured for this deployment. Set OPENAI_API_KEY or switch CLEARWEIGHT_AI_PROVIDER to codex.",
+      apiKeyRequired: true,
+      available: true,
+      message: null,
     };
   }
 
@@ -73,6 +71,7 @@ export function matrixGenerationStatusFor(
     mode,
     provider,
     signInRequired: true,
+    apiKeyRequired: false,
     available: codexSignInAvailable,
     message: codexSignInAvailable
       ? null
