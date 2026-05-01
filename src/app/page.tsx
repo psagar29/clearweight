@@ -299,6 +299,22 @@ export default function Home() {
     );
   }
 
+  if (generationRequiresApiKey && !hasOpenAIKey && phase === "input") {
+    return (
+      <AuthGate
+        light={light}
+        message="Enter your OpenAI API key to get started."
+        signInAvailable={false}
+        signInProblemMessage={null}
+        onToggleTheme={() => setLight((v) => !v)}
+        apiKeyMode
+        apiKeyValue={openAIKey}
+        onApiKeyChange={updateOpenAIKey}
+        onApiKeyClear={clearOpenAIKey}
+      />
+    );
+  }
+
   /* ════════════ INPUT / LOADING / LIFTING PHASE ════════════ */
   if (phase === "input" || phase === "loading" || phase === "lifting") {
     const isLifting = phase === "lifting";
@@ -811,6 +827,10 @@ function AuthGate({
   signInAvailable,
   signInProblemMessage,
   onToggleTheme,
+  apiKeyMode = false,
+  apiKeyValue = "",
+  onApiKeyChange,
+  onApiKeyClear,
 }: {
   light: boolean;
   loading?: boolean;
@@ -818,6 +838,10 @@ function AuthGate({
   signInAvailable: boolean;
   signInProblemMessage: string | null;
   onToggleTheme: () => void;
+  apiKeyMode?: boolean;
+  apiKeyValue?: string;
+  onApiKeyChange?: (value: string) => void;
+  onApiKeyClear?: () => void;
 }) {
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center px-5">
@@ -867,6 +891,50 @@ function AuthGate({
                   <div className="skeleton h-10 w-full" />
                 </div>
               </div>
+            ) : apiKeyMode ? (
+              <>
+                <p className="mb-5 text-center text-[14px] leading-relaxed" style={{ color: "var(--muted)" }}>
+                  {message}
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      value={apiKeyValue}
+                      onChange={(e) => onApiKeyChange?.(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="sk-..."
+                      className="h-12 min-w-0 flex-1 rounded-[14px] bg-transparent px-4 text-[14px] outline-none placeholder:text-[var(--faint)]"
+                      style={{ border: "1px solid var(--border-mid)", color: "var(--fg)", caretColor: "var(--accent)" }}
+                    />
+                    {apiKeyValue.trim() && (
+                      <button
+                        type="button"
+                        onClick={onApiKeyClear}
+                        aria-label="Clear key"
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] transition-all duration-200 hover:scale-105 active:scale-95"
+                        style={{ background: "var(--surface-hover)", color: "var(--muted)" }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <a
+                    href="https://platform.openai.com/settings/organization/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 text-[11px] font-medium transition-colors hover:text-[var(--fg)]"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Get an API key from OpenAI
+                    <ExternalLink size={10} />
+                  </a>
+                  <p className="text-center text-[10px] leading-relaxed" style={{ color: "var(--faint)" }}>
+                    Your key stays in this browser tab only. It is never stored on the server.
+                  </p>
+                </div>
+              </>
             ) : (
               <>
                 <p className="mb-5 text-center text-[14px] leading-relaxed" style={{ color: "var(--muted)" }}>
@@ -899,7 +967,7 @@ function AuthGate({
 
         {/* feature pills */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-2 anim-cascade" style={{ animationDelay: "300ms" }}>
-          {["AI-generated matrices", "Adjustable weights", "Sensitivity analysis", "Dark & light modes"].map((f) => (
+          {["AI-generated matrices", "Adjustable weights", "Sensitivity analysis", "No server storage"].map((f) => (
             <span
               key={f}
               className="rounded-full px-3.5 py-1.5 text-[11px] font-medium"
